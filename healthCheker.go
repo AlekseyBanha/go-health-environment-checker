@@ -141,7 +141,7 @@ func (hc *HealthChecker) checkPostgreSQL() bool {
 
 func (hc *HealthChecker) checkPostgreSQLWithError() error {
 	if hc.config.PostgresChecker == nil {
-		return nil // Не ошибка, просто пропускаем проверку
+		return nil
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
@@ -195,7 +195,7 @@ func (hc *HealthChecker) checkRabbitMQWithError() error {
 
 	if err := hc.config.RabbitMQChecker.PingRabbitMQ(ctx); err != nil {
 		if hc.config.Logger != nil {
-			hc.config.Logger.Error("PostgreSQL health check failed", slog.Any("error", err.Error()))
+			hc.config.Logger.Error("RabbitMQ  health check failed", slog.Any("error", err.Error()))
 		}
 		return err
 	}
