@@ -2,7 +2,6 @@ package healthchecker
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -33,7 +32,6 @@ type HealthConfig struct {
 	CheckConsumer   bool
 	ConsumerQueue   string
 
-	// Инжекция зависимостей
 	PostgresChecker   PostgresChecker
 	OpenSearchChecker OpenSearchChecker
 	RabbitMQChecker   RabbitMQChecker
@@ -79,45 +77,45 @@ func (hc *HealthChecker) CheckHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (hc *HealthChecker) Check() (bool, map[string]error) {
-	results := make(map[string]error)
-	healthy := true
-
-	if !hc.checkEnvVariables(hc.config.RequiredEnvs) {
-		results["env_variables"] = fmt.Errorf("missing required environment variables")
-		healthy = false
-	}
-
-	if hc.config.CheckPostgres {
-		if err := hc.checkPostgreSQLWithError(); err != nil {
-			results["postgres"] = err
-			healthy = false
-		}
-	}
-
-	if hc.config.CheckOpenSearch {
-		if err := hc.checkOpenSearchWithError(); err != nil {
-			results["opensearch"] = err
-			healthy = false
-		}
-	}
-
-	if hc.config.CheckRabbitMQ {
-		if err := hc.checkRabbitMQWithError(); err != nil {
-			results["rabbitmq"] = err
-			healthy = false
-		}
-	}
-
-	if hc.config.CheckConsumer {
-		if !hc.checkConsumer(hc.config.ConsumerQueue) {
-			results["consumer"] = fmt.Errorf("consumer check failed")
-			healthy = false
-		}
-	}
-
-	return healthy, results
-}
+//func (hc *HealthChecker) Check() (bool, map[string]error) {
+//	results := make(map[string]error)
+//	healthy := true
+//
+//	if !hc.checkEnvVariables(hc.config.RequiredEnvs) {
+//		results["env_variables"] = fmt.Errorf("missing required environment variables")
+//		healthy = false
+//	}
+//
+//	if hc.config.CheckPostgres {
+//		if err := hc.checkPostgreSQLWithError(); err != nil {
+//			results["postgres"] = err
+//			healthy = false
+//		}
+//	}
+//
+//	if hc.config.CheckOpenSearch {
+//		if err := hc.checkOpenSearchWithError(); err != nil {
+//			results["opensearch"] = err
+//			healthy = false
+//		}
+//	}
+//
+//	if hc.config.CheckRabbitMQ {
+//		if err := hc.checkRabbitMQWithError(); err != nil {
+//			results["rabbitmq"] = err
+//			healthy = false
+//		}
+//	}
+//
+//	if hc.config.CheckConsumer {
+//		if !hc.checkConsumer(hc.config.ConsumerQueue) {
+//			results["consumer"] = fmt.Errorf("consumer check failed")
+//			healthy = false
+//		}
+//	}
+//
+//	return healthy, results
+//}
 
 func (hc *HealthChecker) checkEnvVariables(requiredEnvs []string) bool {
 	for _, env := range requiredEnvs {
