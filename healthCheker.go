@@ -22,6 +22,7 @@ type RabbitMQChecker interface {
 
 type Logger interface {
 	Error(msg string, args ...any)
+	Info(msg string, args ...any)
 }
 
 type HealthConfig struct {
@@ -39,6 +40,16 @@ type HealthChecker struct {
 
 func New(config HealthConfig) *HealthChecker {
 	return &HealthChecker{config: config}
+}
+
+func Serve(hc *HealthChecker) {
+	healthMux := http.NewServeMux()
+	healthMux.HandleFunc("/health", hc.CheckHandler)
+
+	hc.config.Logger.Info("Starting health check server on :81")
+	if err := http.ListenAndServe(":81", healthMux); err != nil {
+		hc.config.Logger.Error("Failed to start health check server", slog.Any("error", err))
+	}
 }
 
 func (hc *HealthChecker) CheckHandler(w http.ResponseWriter, r *http.Request) {
