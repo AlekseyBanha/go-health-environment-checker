@@ -25,13 +25,7 @@ type Logger interface {
 }
 
 type HealthConfig struct {
-	RequiredEnvs    []string
-	CheckPostgres   bool
-	CheckOpenSearch bool
-	CheckRabbitMQ   bool
-	CheckConsumer   bool
-	ConsumerQueue   string
-
+	RequiredEnvs      []string
 	PostgresChecker   PostgresChecker
 	OpenSearchChecker OpenSearchChecker
 	RabbitMQChecker   RabbitMQChecker
@@ -54,19 +48,15 @@ func (hc *HealthChecker) CheckHandler(w http.ResponseWriter, r *http.Request) {
 		healthy = false
 	}
 
-	if hc.config.CheckPostgres && !hc.checkPostgreSQL() {
+	if !hc.checkPostgreSQL() {
 		healthy = false
 	}
 
-	if hc.config.CheckOpenSearch && !hc.checkOpenSearch() {
+	if !hc.checkOpenSearch() {
 		healthy = false
 	}
 
-	if hc.config.CheckRabbitMQ && !hc.checkRabbitMQ() {
-		healthy = false
-	}
-
-	if hc.config.CheckConsumer && !hc.checkConsumer(hc.config.ConsumerQueue) {
+	if !hc.checkRabbitMQ() {
 		healthy = false
 	}
 
@@ -76,46 +66,6 @@ func (hc *HealthChecker) CheckHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
 }
-
-//func (hc *HealthChecker) Check() (bool, map[string]error) {
-//	results := make(map[string]error)
-//	healthy := true
-//
-//	if !hc.checkEnvVariables(hc.config.RequiredEnvs) {
-//		results["env_variables"] = fmt.Errorf("missing required environment variables")
-//		healthy = false
-//	}
-//
-//	if hc.config.CheckPostgres {
-//		if err := hc.checkPostgreSQLWithError(); err != nil {
-//			results["postgres"] = err
-//			healthy = false
-//		}
-//	}
-//
-//	if hc.config.CheckOpenSearch {
-//		if err := hc.checkOpenSearchWithError(); err != nil {
-//			results["opensearch"] = err
-//			healthy = false
-//		}
-//	}
-//
-//	if hc.config.CheckRabbitMQ {
-//		if err := hc.checkRabbitMQWithError(); err != nil {
-//			results["rabbitmq"] = err
-//			healthy = false
-//		}
-//	}
-//
-//	if hc.config.CheckConsumer {
-//		if !hc.checkConsumer(hc.config.ConsumerQueue) {
-//			results["consumer"] = fmt.Errorf("consumer check failed")
-//			healthy = false
-//		}
-//	}
-//
-//	return healthy, results
-//}
 
 func (hc *HealthChecker) checkEnvVariables(requiredEnvs []string) bool {
 	for _, env := range requiredEnvs {
