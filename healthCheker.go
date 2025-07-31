@@ -12,6 +12,10 @@ type PostgresChecker interface {
 	PingPostgres(ctx context.Context) error
 }
 
+type ClickHouseChecker interface {
+	PingClickHouse(ctx context.Context) error
+}
+
 type OpenSearchChecker interface {
 	PingOpenSearch(ctx context.Context) error
 }
@@ -20,23 +24,24 @@ type RabbitMQChecker interface {
 	PingRabbitMQ(ctx context.Context) error
 }
 
+type ConsumerChecker interface {
+	IsConsumerHealthy() bool
+}
+
 type Logger interface {
 	Error(msg string, args ...any)
+	Info(msg string, args ...any)
 }
 
 type HealthConfig struct {
-	RequiredEnvs    []string
-	CheckPostgres   bool
-	CheckOpenSearch bool
-	CheckRabbitMQ   bool
-	CheckConsumer   bool
-	ConsumerQueue   string
-
+	RequiredEnvs      []string
 	PostgresChecker   PostgresChecker
 	OpenSearchChecker OpenSearchChecker
+	ClickHouseChecker ClickHouseChecker
 	RabbitMQChecker   RabbitMQChecker
+	ConsumerMQChecker RabbitMQChecker
+	ConsumerChecker   ConsumerChecker
 	Logger            Logger
-	ConsumerChecker   func(queueName string) bool
 }
 
 type HealthChecker struct {
@@ -47,6 +52,16 @@ func New(config HealthConfig) *HealthChecker {
 	return &HealthChecker{config: config}
 }
 
+func Serve(hc *HealthChecker) {
+	healthMux := http.NewServeMux()
+	healthMux.HandleFunc("/health", hc.CheckHandler)
+
+	hc.config.Logger.Info("Starting health check server on :81")
+	if err := http.ListenAndServe(":81", healthMux); err != nil {
+		hc.config.Logger.Error("Failed to start health check server", slog.Any("error", err))
+	}
+}
+
 func (hc *HealthChecker) CheckHandler(w http.ResponseWriter, r *http.Request) {
 	healthy := true
 
@@ -54,19 +69,23 @@ func (hc *HealthChecker) CheckHandler(w http.ResponseWriter, r *http.Request) {
 		healthy = false
 	}
 
-	if hc.config.CheckPostgres && !hc.checkPostgreSQL() {
+	if !hc.checkPostgreSQL() {
 		healthy = false
 	}
 
-	if hc.config.CheckOpenSearch && !hc.checkOpenSearch() {
+	if !hc.checkClickHouse() {
 		healthy = false
 	}
 
-	if hc.config.CheckRabbitMQ && !hc.checkRabbitMQ() {
+	if !hc.checkOpenSearch() {
 		healthy = false
 	}
 
-	if hc.config.CheckConsumer && !hc.checkConsumer(hc.config.ConsumerQueue) {
+	if !hc.checkRabbitMQ() {
+		healthy = false
+	}
+
+	if !hc.checkConsumer() {
 		healthy = false
 	}
 
@@ -76,46 +95,6 @@ func (hc *HealthChecker) CheckHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
 }
-
-//func (hc *HealthChecker) Check() (bool, map[string]error) {
-//	results := make(map[string]error)
-//	healthy := true
-//
-//	if !hc.checkEnvVariables(hc.config.RequiredEnvs) {
-//		results["env_variables"] = fmt.Errorf("missing required environment variables")
-//		healthy = false
-//	}
-//
-//	if hc.config.CheckPostgres {
-//		if err := hc.checkPostgreSQLWithError(); err != nil {
-//			results["postgres"] = err
-//			healthy = false
-//		}
-//	}
-//
-//	if hc.config.CheckOpenSearch {
-//		if err := hc.checkOpenSearchWithError(); err != nil {
-//			results["opensearch"] = err
-//			healthy = false
-//		}
-//	}
-//
-//	if hc.config.CheckRabbitMQ {
-//		if err := hc.checkRabbitMQWithError(); err != nil {
-//			results["rabbitmq"] = err
-//			healthy = false
-//		}
-//	}
-//
-//	if hc.config.CheckConsumer {
-//		if !hc.checkConsumer(hc.config.ConsumerQueue) {
-//			results["consumer"] = fmt.Errorf("consumer check failed")
-//			healthy = false
-//		}
-//	}
-//
-//	return healthy, results
-//}
 
 func (hc *HealthChecker) checkEnvVariables(requiredEnvs []string) bool {
 	for _, env := range requiredEnvs {
@@ -127,6 +106,43 @@ func (hc *HealthChecker) checkEnvVariables(requiredEnvs []string) bool {
 		}
 	}
 	return true
+}
+
+func (hc *HealthChecker) checkClickHouse() bool {
+	if hc.config.ClickHouseChecker == nil {
+		return true
+	}
+
+	return hc.checkClickHouseWithError() == nil
+}
+
+func (hc *HealthChecker) checkConsumer() bool {
+	if hc.config.ConsumerChecker == nil {
+		return true
+	}
+	if !hc.config.ConsumerChecker.IsConsumerHealthy() {
+		hc.config.Logger.Error("consumer is frozen. Heartbeat is not updating more 2 minutes")
+		return false
+	}
+
+	return true
+}
+
+func (hc *HealthChecker) checkClickHouseWithError() error {
+	if hc.config.ClickHouseChecker == nil {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	if err := hc.config.ClickHouseChecker.PingClickHouse(ctx); err != nil {
+		if hc.config.Logger != nil {
+			hc.config.Logger.Error("ClickHouse health check failed", slog.Any("error", err.Error()))
+		}
+		return err
+	}
+	return nil
 }
 
 func (hc *HealthChecker) checkPostgreSQL() bool {
@@ -198,12 +214,4 @@ func (hc *HealthChecker) checkRabbitMQWithError() error {
 		return err
 	}
 	return nil
-}
-
-func (hc *HealthChecker) checkConsumer(queueName string) bool {
-	if hc.config.ConsumerChecker == nil {
-		return true
-	}
-
-	return hc.config.ConsumerChecker(queueName)
 }
